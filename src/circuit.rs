@@ -86,7 +86,12 @@ impl CircuitBuilder {
     }
 
     /// Add new addition gate constraint to a circuit.
-    pub fn add_addition(&mut self, lhs: Cellref, rhs: Cellref) -> Cellref {
+    pub fn add_addition(&mut self, lhs: Cellref, rhs: Cellref) -> Result<Cellref> {
+        self.validate_cell_ref(lhs)
+            .map_err(|e| anyhow!(format!("LHS: {}", e)))?;
+        self.validate_cell_ref(rhs)
+            .map_err(|e| anyhow!(format!("RHS: {}", e)))?;
+
         self.ops.push(Op::Add);
         let pos = self.current_row * 3;
         self.current_row += 1;
@@ -98,11 +103,16 @@ impl CircuitBuilder {
         self.add_wire_constraint(lhs, new_lhs);
         self.add_wire_constraint(rhs, new_rhs);
 
-        Cellref::Wire(pos + 2)
+        Ok(Cellref::Wire(pos + 2))
     }
 
     /// Add new multiplication gate constraint to a circuit.
-    pub fn add_multiplication(&mut self, lhs: Cellref, rhs: Cellref) -> Cellref {
+    pub fn add_multiplication(&mut self, lhs: Cellref, rhs: Cellref) -> Result<Cellref> {
+        self.validate_cell_ref(lhs)
+            .map_err(|e| anyhow!(format!("LHS: {}", e)))?;
+        self.validate_cell_ref(rhs)
+            .map_err(|e| anyhow!(format!("RHS: {}", e)))?;
+
         self.ops.push(Op::Mul);
         let pos = self.current_row * 3;
         self.current_row += 1;
@@ -114,12 +124,30 @@ impl CircuitBuilder {
         self.add_wire_constraint(lhs, new_lhs);
         self.add_wire_constraint(rhs, new_rhs);
 
-        Cellref::Wire(pos + 2)
+        Ok(Cellref::Wire(pos + 2))
     }
 
     /// Add wire constraint to a circuit.
     pub fn add_wire_constraint(&mut self, x: Cellref, y: Cellref) {
         self.wiring_pairs.push((x, y))
+    }
+
+    fn validate_cell_ref(&self, cell: Cellref) -> Result<()> {
+        let n_input = self.input_config.n_public_input + self.input_config.n_private_input;
+        match cell {
+            Cellref::Input(x) => {
+                if x == 0 || x > n_input {
+                    return Err(anyhow!("Input {} does not exist.", x));
+                }
+            }
+            Cellref::Wire(x) => {
+                if x >= self.current_row * 3 {
+                    return Err(anyhow!("Wire {} does not exist.", x));
+                }
+            }
+        };
+
+        Ok(())
     }
 
     pub fn build(self) -> Result<Circuit> {
@@ -208,15 +236,15 @@ mod tests {
 
         // First row of addition
         // out_0 = (pub_0 + priv_0)
-        let out_0 = builder.add_addition(pb_refs[0], prv_refs[0]);
+        let out_0 = builder.add_addition(pb_refs[0], prv_refs[0]).unwrap();
 
         // Second row of multiplication
         // out_1 = out_0 * pub_1
-        let out_1 = builder.add_multiplication(out_0, pb_refs[1]);
+        let out_1 = builder.add_multiplication(out_0, pb_refs[1]).unwrap();
 
         // Last addition
         // out = out_1 + priv_0
-        let _ = builder.add_addition(out_1, prv_refs[0]);
+        let _ = builder.add_addition(out_1, prv_refs[0]).unwrap();
 
         let builder_result = builder.build();
         assert!(builder_result.is_ok(), "Build should succeed.");
@@ -239,5 +267,53 @@ mod tests {
             ]),
             "Circuit wirings should be defined correctly."
         );
+    }
+
+    #[test]
+    fn test_lhs_invalid_input_ref() {
+        let mut builder = CircuitBuilder::new(InputConfig {
+            n_public_input: 1,
+            n_private_input: 0,
+        });
+
+        let res = builder.add_addition(Cellref::Input(100), Cellref::Input(1));
+        let error = res.unwrap_err();
+        assert_eq!(format!("{}", error), "LHS: Input 100 does not exist.");
+    }
+
+    #[test]
+    fn test_rhs_invalid_input_ref() {
+        let mut builder = CircuitBuilder::new(InputConfig {
+            n_public_input: 1,
+            n_private_input: 0,
+        });
+
+        let res = builder.add_addition(Cellref::Input(1), Cellref::Input(100));
+        let error = res.unwrap_err();
+        assert_eq!(format!("{}", error), "RHS: Input 100 does not exist.");
+    }
+
+    #[test]
+    fn test_lhs_invalid_wire_ref() {
+        let mut builder = CircuitBuilder::new(InputConfig {
+            n_public_input: 1,
+            n_private_input: 0,
+        });
+
+        let res = builder.add_addition(Cellref::Wire(1), Cellref::Input(1));
+        let error = res.unwrap_err();
+        assert_eq!(format!("{}", error), "LHS: Wire 1 does not exist.");
+    }
+
+    #[test]
+    fn test_rhs_invalid_wire_ref() {
+        let mut builder = CircuitBuilder::new(InputConfig {
+            n_public_input: 1,
+            n_private_input: 0,
+        });
+
+        let res = builder.add_addition(Cellref::Input(1), Cellref::Wire(1));
+        let error = res.unwrap_err();
+        assert_eq!(format!("{}", error), "RHS: Wire 1 does not exist.");
     }
 }
