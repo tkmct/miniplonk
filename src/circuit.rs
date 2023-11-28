@@ -26,8 +26,30 @@ pub enum Op {
 
 #[derive(Clone, Copy, Debug)]
 pub struct InputConfig {
-    n_public_input: usize,
-    n_private_input: usize,
+    n_pub: usize,
+    n_priv: usize,
+}
+
+impl InputConfig {
+    /// Generate new input config.
+    pub fn new(n_pub: usize, n_priv: usize) -> Self {
+        Self { n_pub, n_priv }
+    }
+
+    /// Returns number of public input.
+    pub fn n_pub(&self) -> usize {
+        self.n_pub
+    }
+
+    /// Returns number of private input.
+    pub fn n_priv(&self) -> usize {
+        self.n_priv
+    }
+
+    /// Returns total number of input.
+    pub fn total_input(&self) -> usize {
+        self.n_pub + self.n_priv
+    }
 }
 
 /// Circuit struct
@@ -74,8 +96,8 @@ impl CircuitBuilder {
     /// Returns pair of vec of input refs.
     /// First item is public inputs' refs and second item is private inputs' refs.
     pub fn get_input_refs(&self) -> (Vec<Cellref>, Vec<Cellref>) {
-        let pb_len = self.input_config.n_public_input;
-        let prv_len = self.input_config.n_private_input;
+        let pb_len = self.input_config.n_pub();
+        let prv_len = self.input_config.n_priv();
 
         let pb = (1..=pb_len + 1).map(Cellref::Input).collect::<Vec<_>>();
         let prv = (pb_len + 1..=pb_len + prv_len)
@@ -133,7 +155,7 @@ impl CircuitBuilder {
     }
 
     fn validate_cell_ref(&self, cell: Cellref) -> Result<()> {
-        let n_input = self.input_config.n_public_input + self.input_config.n_private_input;
+        let n_input = self.input_config.total_input();
         match cell {
             Cellref::Input(x) => {
                 if x == 0 || x > n_input {
@@ -151,7 +173,7 @@ impl CircuitBuilder {
     }
 
     pub fn build(self) -> Result<Circuit> {
-        let n_input = self.input_config.n_public_input + self.input_config.n_private_input;
+        let n_input = self.input_config.total_input();
         let total_cells = n_input + self.current_row * 3;
 
         // calculate every wirings
@@ -227,10 +249,7 @@ mod tests {
     // pub: 2, priv: 1
     #[test]
     fn test_build_circuit() {
-        let mut builder = CircuitBuilder::new(InputConfig {
-            n_public_input: 2,
-            n_private_input: 1,
-        });
+        let mut builder = CircuitBuilder::new(InputConfig::new(2, 1));
 
         let (pb_refs, prv_refs) = builder.get_input_refs();
 
@@ -271,10 +290,7 @@ mod tests {
 
     #[test]
     fn test_lhs_invalid_input_ref() {
-        let mut builder = CircuitBuilder::new(InputConfig {
-            n_public_input: 1,
-            n_private_input: 0,
-        });
+        let mut builder = CircuitBuilder::new(InputConfig::new(1, 0));
 
         let res = builder.add_addition(Cellref::Input(100), Cellref::Input(1));
         let error = res.unwrap_err();
@@ -283,10 +299,7 @@ mod tests {
 
     #[test]
     fn test_rhs_invalid_input_ref() {
-        let mut builder = CircuitBuilder::new(InputConfig {
-            n_public_input: 1,
-            n_private_input: 0,
-        });
+        let mut builder = CircuitBuilder::new(InputConfig::new(1, 0));
 
         let res = builder.add_addition(Cellref::Input(1), Cellref::Input(100));
         let error = res.unwrap_err();
@@ -295,10 +308,7 @@ mod tests {
 
     #[test]
     fn test_lhs_invalid_wire_ref() {
-        let mut builder = CircuitBuilder::new(InputConfig {
-            n_public_input: 1,
-            n_private_input: 0,
-        });
+        let mut builder = CircuitBuilder::new(InputConfig::new(1, 0));
 
         let res = builder.add_addition(Cellref::Wire(1), Cellref::Input(1));
         let error = res.unwrap_err();
@@ -307,10 +317,7 @@ mod tests {
 
     #[test]
     fn test_rhs_invalid_wire_ref() {
-        let mut builder = CircuitBuilder::new(InputConfig {
-            n_public_input: 1,
-            n_private_input: 0,
-        });
+        let mut builder = CircuitBuilder::new(InputConfig::new(1, 0));
 
         let res = builder.add_addition(Cellref::Input(1), Cellref::Wire(1));
         let error = res.unwrap_err();
