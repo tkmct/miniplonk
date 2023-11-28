@@ -1,7 +1,7 @@
 use ark_ff::Field;
 
 use crate::circuit::Circuit;
-//
+
 // TODO: change this
 pub type Proof = u64;
 
@@ -65,5 +65,54 @@ impl<F: Field> Prover<F> {
         // 3. wires
         // 4. output
         todo!()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::circuit::{Circuit, CircuitBuilder, InputConfig};
+    use ark_bls12_381::Fq;
+
+    // build circuit to calculate
+    // out = (pub_0 + priv_0) * pub_1 + priv_0
+    fn simple_circ() -> Circuit {
+        let mut builder = CircuitBuilder::new(InputConfig::new(2, 1));
+        let (pb_refs, prv_refs) = builder.get_input_refs();
+        let out_0 = builder.add_addition(pb_refs[0], prv_refs[0]).unwrap();
+        let out_1 = builder.add_multiplication(out_0, pb_refs[1]).unwrap();
+        let _ = builder.add_addition(out_1, prv_refs[0]).unwrap();
+
+        builder.build().unwrap()
+    }
+
+    #[test]
+    fn test_generate_witness() {
+        // Input Cells
+        // | pub_0 | pub_1 | priv_0 |
+        //
+        // Wire Cells
+        // | lhs   | rhs    | out   | s |
+        // |-------|--------|-------|---|
+        // | pub_0 | priv_0 | out_0 | 0 |
+        // | out_0 | pub_1  | out_1 | 1 |
+        // | out_1 | priv_0 | out   | 0 |
+        //
+        // Witness should assigned as following
+        //
+        // Input Cells
+        // | 3 | 5 | 7 |
+        //
+        // Wire Cells
+        // | lhs  | rhs  | out  | s |
+        // |------|------|------|---|
+        // |  3   |  7   |  10  | 0 |
+        // | 10   |  5   |  50  | 1 |
+        // | 50   |  7   |  57  | 0 |
+
+        let circ = simple_circ();
+        let public_inputs = vec![];
+        let private_inputs = vec![];
+        let prover = Prover::<Fq>::new(circ, public_inputs, private_inputs);
     }
 }
