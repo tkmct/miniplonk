@@ -9,9 +9,6 @@ use std::collections::HashSet;
 - When cells are handled by prover, table will be flattened to a single vector.
 */
 
-type Row = usize;
-type Column = usize;
-
 // In what position of the polynomial the cell exists.
 // In order to represent both intermediate cells and input cells,
 // For input cells, id: total cell - input number
@@ -56,16 +53,43 @@ impl InputConfig {
 pub struct Circuit {
     input_config: InputConfig,
     selectors: Vec<Op>,
-    wirings: Vec<Vec<Id>>,
+    copy_constraints: Vec<Vec<Id>>,
 
     /// Total number of cells including.
     /// gate constraints cells: lhs, rhs, out.
     /// input cells: public inputs, private inputs.
-    total_cells: usize,
+    n_cells: usize,
+
+    /// Total number of rows.
+    n_rows: usize,
 
     /// The last cell id of computation trace table.
     /// Circuit allows single output.
     output: Id,
+}
+
+impl Circuit {
+    /// Returns total number of inputs.
+    pub fn n_inputs(&self) -> usize {
+        self.input_config.total_input()
+    }
+
+    /// Returns the total number of cells.
+    pub fn n_cells(&self) -> usize {
+        self.n_cells
+    }
+
+    pub fn n_rows(&self) -> usize {
+        self.n_rows
+    }
+
+    /// Very naive way to retrieve set of cell ids share same value(copy constraints).
+    pub fn get_copy_constraints(&self, id: Id) -> Option<&[Id]> {
+        self.copy_constraints
+            .iter()
+            .find(|v| v.contains(&id))
+            .map(|v| v.as_slice())
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -174,13 +198,13 @@ impl CircuitBuilder {
 
     pub fn build(self) -> Result<Circuit> {
         let n_input = self.input_config.total_input();
-        let total_cells = n_input + self.current_row * 3;
+        let n_cells = n_input + self.current_row * 3;
 
         // calculate every wirings
         let mut wirings = Vec::with_capacity(n_input);
         for input_number in 1..=n_input {
             // push empty hash set for each input cell
-            let id = total_cells - input_number;
+            let id = n_cells - input_number;
             let mut set = HashSet::new();
             set.insert(id);
             wirings.push(set);
@@ -189,11 +213,11 @@ impl CircuitBuilder {
         self.wiring_pairs.iter().for_each(|(x_ref, y_ref)| {
             let x = match x_ref {
                 Cellref::Wire(x) => *x,
-                Cellref::Input(x) => total_cells - x,
+                Cellref::Input(x) => n_cells - x,
             };
             let y = match y_ref {
                 Cellref::Wire(y) => *y,
-                Cellref::Input(y) => total_cells - y,
+                Cellref::Input(y) => n_cells - y,
             };
 
             if let Some(wire_set) = wirings.iter_mut().find(|set| set.contains(&x)) {
@@ -213,8 +237,9 @@ impl CircuitBuilder {
         Ok(Circuit {
             input_config: self.input_config,
             selectors: self.ops,
-            total_cells,
-            wirings: wirings
+            n_cells,
+            n_rows: self.current_row,
+            copy_constraints: wirings
                 .iter()
                 .map(|set| {
                     let mut v = set.iter().copied().collect::<Vec<_>>();
@@ -277,7 +302,7 @@ mod tests {
         // Test wiring constraints
         // Wirings: [[0, 11],[4,10],[1,7,9],[2,3],[5,6]]
         assert!(
-            circ.wirings.eq(&vec![
+            circ.copy_constraints.eq(&vec![
                 vec![0, 11],
                 vec![4, 10],
                 vec![1, 7, 9],
