@@ -79,8 +79,14 @@ impl Circuit {
         self.n_cells
     }
 
+    /// Returns the total number of rows.
     pub fn n_rows(&self) -> usize {
         self.n_rows
+    }
+
+    /// Returns the id of output cell.
+    pub fn output_id(&self) -> Id {
+        self.output
     }
 
     /// Very naive way to retrieve set of cell ids share same value(copy constraints).
@@ -89,6 +95,10 @@ impl Circuit {
             .iter()
             .find(|v| v.contains(&id))
             .map(|v| v.as_slice())
+    }
+
+    pub fn get_selector(&self, row: usize) -> Option<Op> {
+        self.selectors.get(row).copied()
     }
 }
 

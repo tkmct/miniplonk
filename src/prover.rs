@@ -1,6 +1,8 @@
+use anyhow::{anyhow, Result};
 use ark_ff::Field;
+use std::collections::VecDeque;
 
-use crate::circuit::Circuit;
+use crate::circuit::{Circuit, Op};
 
 // TODO: change this
 pub type Proof = u64;
@@ -22,8 +24,94 @@ impl<F: Field> Prover<F> {
     }
 
     /// Calculate all intermediate witness values in a circuit gate by gate.
-    fn calculate_witness(&mut self) -> Vec<F> {
-        todo!()
+    pub fn calculate_witness(&mut self) -> Result<Vec<F>> {
+        // assign input wirings to the cells
+        let n_inputs = self.circuit.n_inputs();
+        let n_cells = self.circuit.n_cells();
+        let n_rows = self.circuit.n_rows();
+
+        let mut trace: Vec<Option<F>> = vec![None; n_cells];
+        let mut eval_queue = VecDeque::<usize>::new();
+
+        for i in 0..n_inputs {
+            let value = self
+                .get_input_val(i)
+                .expect("Value within 0..total_input should not panic");
+
+            // assign input cell and its copy constrained cells
+            let id = n_cells - (i + 1);
+            trace[id] = Some(value);
+
+            self.circuit
+                .get_copy_constraints(id)
+                .unwrap()
+                .iter()
+                .for_each(|cell_id| {
+                    trace[*cell_id] = Some(value);
+
+                    let row = cell_id / 3;
+                    if row < n_rows {
+                        // This is actually a gate constraint
+                        let lhs = trace[row * 3];
+                        let rhs = trace[row * 3 + 1];
+                        let out = trace[row * 3 + 2];
+                        if lhs.is_some() && rhs.is_some() && out.is_none() {
+                            eval_queue.push_back(row * 3 + 2);
+                        }
+                    }
+                });
+        }
+
+        // loop queue until it's all calculated
+        while let Some(id) = eval_queue.pop_front() {
+            let lhs = trace[id - 2].unwrap();
+            let rhs = trace[id - 1].unwrap();
+            let op = self.circuit.get_selector(id / 3).unwrap();
+            let value = match op {
+                Op::Add => lhs + rhs,
+                Op::Mul => lhs * rhs,
+            };
+
+            print!(
+                "Id: {}, Assign value {}({}, {}) = {}",
+                id,
+                if op == Op::Add { "ADD" } else { "MUL" },
+                lhs,
+                rhs,
+                value
+            );
+
+            trace[id] = Some(value);
+            if id == self.circuit.output_id() {
+                continue;
+            }
+
+            self.circuit
+                .get_copy_constraints(id)
+                .unwrap()
+                .iter()
+                .for_each(|cell_id| {
+                    trace[*cell_id] = Some(value);
+
+                    let row = cell_id / 3;
+                    if row < n_rows {
+                        // This is actually a gate constraint
+                        let lhs = trace[row * 3];
+                        let rhs = trace[row * 3 + 1];
+                        let out = trace[row * 3 + 2];
+                        if lhs.is_some() && rhs.is_some() && out.is_none() {
+                            eval_queue.push_back(row * 3 + 2);
+                        }
+                    }
+                })
+        }
+
+        debug_assert!(trace.iter().all(|o| o.is_some()), "");
+
+        trace
+            .into_iter()
+            .collect::<Option<Vec<_>>>()
+            .ok_or(anyhow!("Not all the cells are filled"))
     }
 
     // this can only be done by prover
@@ -65,6 +153,16 @@ impl<F: Field> Prover<F> {
         // 3. wires
         // 4. output
         todo!()
+    }
+
+    fn get_input_val(&self, id: usize) -> Option<F> {
+        if id < self.public_inputs.len() {
+            self.public_inputs.get(id).copied()
+        } else {
+            self.private_inputs
+                .get(id - self.public_inputs.len())
+                .copied()
+        }
     }
 }
 
@@ -111,8 +209,20 @@ mod tests {
         // | 50   |  7   |  57  | 0 |
 
         let circ = simple_circ();
-        let public_inputs = vec![];
-        let private_inputs = vec![];
-        let prover = Prover::<Fq>::new(circ, public_inputs, private_inputs);
+        let public_inputs = vec![Fq::from(3), Fq::from(5)];
+        let private_inputs = vec![Fq::from(7)];
+        let mut prover = Prover::<Fq>::new(circ, public_inputs, private_inputs);
+
+        let witness = prover.calculate_witness();
+        let expected = vec![3, 7, 10, 10, 5, 50, 50, 7, 57, 7, 5, 3]
+            .iter()
+            .map(|i| Fq::from(*i))
+            .collect::<Vec<_>>();
+
+        assert!(witness.is_ok(), "Witness should be correctly calculated");
+        assert!(
+            witness.unwrap().eq(&expected),
+            "Witness should be calculated correctly."
+        );
     }
 }
