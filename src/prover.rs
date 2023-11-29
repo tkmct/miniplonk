@@ -11,6 +11,9 @@ pub struct Prover<F: Field> {
     circuit: Circuit,
     public_inputs: Vec<F>,
     private_inputs: Vec<F>,
+
+    /// This field stores complete witness data.
+    computation_trace: Option<Vec<F>>,
 }
 
 impl<F: Field> Prover<F> {
@@ -20,11 +23,12 @@ impl<F: Field> Prover<F> {
             circuit,
             public_inputs,
             private_inputs,
+            computation_trace: None,
         }
     }
 
     /// Calculate all intermediate witness values in a circuit gate by gate.
-    pub fn calculate_witness(&mut self) -> Result<Vec<F>> {
+    pub fn calculate_witness(&mut self) -> Result<()> {
         // assign input wirings to the cells
         let n_inputs = self.circuit.n_inputs();
         let n_cells = self.circuit.n_cells();
@@ -108,14 +112,19 @@ impl<F: Field> Prover<F> {
 
         debug_assert!(trace.iter().all(|o| o.is_some()), "");
 
-        trace
+        let trace = trace
             .into_iter()
             .collect::<Option<Vec<_>>>()
-            .ok_or(anyhow!("Not all the cells are filled"))
+            .ok_or(anyhow!("Not all the cells are filled"))?;
+        self.computation_trace = Some(trace);
+
+        Ok(())
     }
 
-    // this can only be done by prover
+    // Compute polynomial that represents whole computation trace.
     fn compute_trace_polynomial(&self) {
+        //
+
         todo!()
     }
 
@@ -213,15 +222,15 @@ mod tests {
         let private_inputs = vec![Fq::from(7)];
         let mut prover = Prover::<Fq>::new(circ, public_inputs, private_inputs);
 
-        let witness = prover.calculate_witness();
-        let expected = vec![3, 7, 10, 10, 5, 50, 50, 7, 57, 7, 5, 3]
+        let result = prover.calculate_witness();
+        let expected = [3, 7, 10, 10, 5, 50, 50, 7, 57, 7, 5, 3]
             .iter()
             .map(|i| Fq::from(*i))
             .collect::<Vec<_>>();
 
-        assert!(witness.is_ok(), "Witness should be correctly calculated");
+        assert!(result.is_ok(), "Witness should be correctly calculated");
         assert!(
-            witness.unwrap().eq(&expected),
+            prover.computation_trace.unwrap().eq(&expected),
             "Witness should be calculated correctly."
         );
     }
