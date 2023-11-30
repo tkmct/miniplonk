@@ -1,5 +1,8 @@
 use anyhow::{anyhow, Result};
-use ark_ff::Field;
+use ark_ff::FftField;
+use ark_poly::{
+    univariate::DensePolynomial, DenseUVPolynomial, EvaluationDomain, Radix2EvaluationDomain,
+};
 use std::collections::VecDeque;
 
 use crate::circuit::{Circuit, Op};
@@ -7,7 +10,7 @@ use crate::circuit::{Circuit, Op};
 // TODO: change this
 pub type Proof = u64;
 
-pub struct Prover<F: Field> {
+pub struct Prover<F: FftField> {
     circuit: Circuit,
     public_inputs: Vec<F>,
     private_inputs: Vec<F>,
@@ -16,7 +19,7 @@ pub struct Prover<F: Field> {
     computation_trace: Option<Vec<F>>,
 }
 
-impl<F: Field> Prover<F> {
+impl<F: FftField> Prover<F> {
     /// Create new prover instance
     pub fn new(circuit: Circuit, public_inputs: Vec<F>, private_inputs: Vec<F>) -> Self {
         Self {
@@ -122,10 +125,16 @@ impl<F: Field> Prover<F> {
     }
 
     // Compute polynomial that represents whole computation trace.
-    fn compute_trace_polynomial(&self) {
-        //
+    fn compute_trace_polynomial(&self) -> Result<DensePolynomial<F>> {
+        // Evaluation domain should better be radix-2 for efficient FFT.
+        let domain = Radix2EvaluationDomain::<F>::new(self.circuit.n_cells())
+            .ok_or(anyhow!("Domain cannot be constructed from circuit size"))?;
+        let trace = self
+            .computation_trace
+            .clone()
+            .ok_or(anyhow!("Computation should be complete."))?;
 
-        todo!()
+        Ok(DensePolynomial::from_coefficients_vec(domain.ifft(&trace)))
     }
 
     // compute inputs polynomial
