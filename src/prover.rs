@@ -1,7 +1,8 @@
 use anyhow::{anyhow, Result};
 use ark_ff::FftField;
 use ark_poly::{
-    univariate::DensePolynomial, DenseUVPolynomial, EvaluationDomain, Radix2EvaluationDomain,
+    univariate::DensePolynomial, DenseUVPolynomial, EvaluationDomain, GeneralEvaluationDomain,
+    Radix2EvaluationDomain,
 };
 use std::collections::VecDeque;
 
@@ -125,10 +126,18 @@ impl<F: FftField> Prover<F> {
     }
 
     // Compute polynomial that represents whole computation trace.
-    fn compute_trace_polynomial(&self) -> Result<DensePolynomial<F>> {
+    pub fn compute_trace_polynomial(&self) -> Result<DensePolynomial<F>> {
         // Evaluation domain should better be radix-2 for efficient FFT.
-        let domain = Radix2EvaluationDomain::<F>::new(self.circuit.n_cells())
+        // domain should be 2^n
+        let size = self
+            .circuit
+            .n_cells()
+            .checked_next_power_of_two()
+            .ok_or(anyhow!("Circuit size is too large."))?;
+
+        let domain = GeneralEvaluationDomain::<F>::new(size)
             .ok_or(anyhow!("Domain cannot be constructed from circuit size"))?;
+
         let trace = self
             .computation_trace
             .clone()
@@ -189,6 +198,7 @@ mod tests {
     use super::*;
     use crate::circuit::{Circuit, CircuitBuilder, InputConfig};
     use ark_bls12_381::Fq;
+    use ark_poly::Polynomial;
 
     // build circuit to calculate
     // out = (pub_0 + priv_0) * pub_1 + priv_0
@@ -242,5 +252,34 @@ mod tests {
             prover.computation_trace.unwrap().eq(&expected),
             "Witness should be calculated correctly."
         );
+    }
+
+    #[test]
+    fn test_trace_polynomial() {
+        let circ = simple_circ();
+
+        let size = circ.n_cells().checked_next_power_of_two().unwrap();
+        let public_inputs = vec![Fq::from(3), Fq::from(5)];
+        let private_inputs = vec![Fq::from(7)];
+        let mut prover = Prover::<Fq>::new(circ, public_inputs, private_inputs);
+
+        let _ = prover.calculate_witness();
+        let expected = [3, 7, 10, 10, 5, 50, 50, 7, 57, 7, 5, 3]
+            .iter()
+            .map(|i| Fq::from(*i))
+            .collect::<Vec<_>>();
+
+        let result = prover.compute_trace_polynomial();
+        assert!(
+            result.is_ok(),
+            "Trace polynomial should be correctly calculated."
+        );
+
+        let poly = result.unwrap();
+        let domain = GeneralEvaluationDomain::<Fq>::new(size).unwrap();
+        for (w, e) in expected.iter().zip(domain.elements().take(expected.len())) {
+            let val = poly.evaluate(&e);
+            assert_eq!(*w, val);
+        }
     }
 }
