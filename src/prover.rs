@@ -2,19 +2,19 @@ use anyhow::{anyhow, Result};
 use ark_ff::FftField;
 use ark_poly::{
     univariate::DensePolynomial, DenseUVPolynomial, EvaluationDomain, GeneralEvaluationDomain,
-    Radix2EvaluationDomain,
 };
 use std::collections::VecDeque;
 
-use crate::circuit::{Circuit, Op};
-
-// TODO: change this
-pub type Proof = u64;
+use crate::{
+    circuit::{Circuit, Op},
+    types::{Proof, PublicParameters},
+};
 
 pub struct Prover<F: FftField> {
     circuit: Circuit,
     public_inputs: Vec<F>,
     private_inputs: Vec<F>,
+    pp: PublicParameters,
 
     /// This field stores complete witness data.
     computation_trace: Option<Vec<F>>,
@@ -22,9 +22,15 @@ pub struct Prover<F: FftField> {
 
 impl<F: FftField> Prover<F> {
     /// Create new prover instance
-    pub fn new(circuit: Circuit, public_inputs: Vec<F>, private_inputs: Vec<F>) -> Self {
+    pub fn new(
+        circuit: Circuit,
+        pp: PublicParameters,
+        public_inputs: Vec<F>,
+        private_inputs: Vec<F>,
+    ) -> Self {
         Self {
             circuit,
+            pp,
             public_inputs,
             private_inputs,
             computation_trace: None,
@@ -146,25 +152,8 @@ impl<F: FftField> Prover<F> {
         Ok(DensePolynomial::from_coefficients_vec(domain.ifft(&trace)))
     }
 
-    // compute inputs polynomial
-    // this can be done in setup phase
-    fn compute_inputs_polynomial(&self) {
-        todo!()
-    }
-
-    // compute selector polynomial independent of inputs
-    // this can be done in setup phase
-    fn compute_selector_polynomial(&self) {
-        todo!()
-    }
-
-    // polynomial which implements rotation like followings
-    // W(𝜔-2 , 𝜔1 , 𝜔3) = (𝜔1 , 𝜔3 , 𝜔-2 ) , W(𝜔-1 , 𝜔0) = (𝜔0 , 𝜔-1), ,,,
-    fn compute_wire_rotation_polynomial(&self) {
-        todo!()
-    }
-
-    fn prove(self) -> Proof {
+    /// Prove the statement
+    pub fn prove(&mut self) -> Proof {
         // suppose we have polynomial commitment scheme available like KZG.
         // generate computation trace
         // setup and cmopute inputs polynomial and selector polynomial => prover parameter
@@ -237,9 +226,10 @@ mod tests {
         // | 50   |  7   |  57  | 0 |
 
         let circ = simple_circ();
+        let pp = PublicParameters {};
         let public_inputs = vec![Fq::from(3), Fq::from(5)];
         let private_inputs = vec![Fq::from(7)];
-        let mut prover = Prover::<Fq>::new(circ, public_inputs, private_inputs);
+        let mut prover = Prover::<Fq>::new(circ, pp, public_inputs, private_inputs);
 
         let result = prover.calculate_witness();
         let expected = [3, 7, 10, 10, 5, 50, 50, 7, 57, 7, 5, 3]
@@ -257,11 +247,11 @@ mod tests {
     #[test]
     fn test_trace_polynomial() {
         let circ = simple_circ();
-
+        let pp = PublicParameters {};
         let size = circ.n_cells().checked_next_power_of_two().unwrap();
         let public_inputs = vec![Fq::from(3), Fq::from(5)];
         let private_inputs = vec![Fq::from(7)];
-        let mut prover = Prover::<Fq>::new(circ, public_inputs, private_inputs);
+        let mut prover = Prover::<Fq>::new(circ, pp, public_inputs, private_inputs);
 
         let _ = prover.calculate_witness();
         let expected = [3, 7, 10, 10, 5, 50, 50, 7, 57, 7, 5, 3]

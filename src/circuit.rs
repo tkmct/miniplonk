@@ -50,6 +50,7 @@ impl InputConfig {
 }
 
 /// Circuit struct
+#[derive(Clone)]
 pub struct Circuit {
     input_config: InputConfig,
     selectors: Vec<Op>,
