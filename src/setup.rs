@@ -1,4 +1,7 @@
-use ark_ff::FftField;
+use ark_crypto_primitives::sponge::CryptographicSponge;
+use ark_ff::{FftField, PrimeField};
+use ark_poly::univariate::DensePolynomial;
+use ark_poly_commit::PolynomialCommitment as PCS;
 
 use crate::{types::PublicParameters, Circuit};
 
@@ -21,9 +24,11 @@ fn compute_wire_rotation_polynomial() {
 }
 
 /// setup public parameters
-pub fn setup<F>(circ: &Circuit, public_input: &[F]) -> PublicParameters
+pub fn setup<F, P, S>(circ: &Circuit, public_input: &[F]) -> PublicParameters
 where
-    F: FftField,
+    F: FftField + PrimeField,
+    S: CryptographicSponge,
+    P: PCS<F, DensePolynomial<F>, S>,
 {
     // do calculate polynomials and public parameters
     // depending on polynomial commitment scheme
