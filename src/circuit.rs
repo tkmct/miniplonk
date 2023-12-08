@@ -52,7 +52,7 @@ impl InputConfig {
 /// Circuit struct
 #[derive(Clone)]
 pub struct Circuit {
-    input_config: InputConfig,
+    pub(crate) input_config: InputConfig,
     selectors: Vec<Op>,
     copy_constraints: Vec<Vec<Id>>,
 

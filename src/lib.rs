@@ -14,7 +14,14 @@ pub use verifier::Verifier;
 mod tests {
     use crate::{circuit::*, prover::*, setup::*, verifier::*};
 
-    use ark_bls12_381::Fq as F;
+    use ark_bls12_381::{Bls12_381, Fq as F};
+    use ark_crypto_primitives::sponge::poseidon::PoseidonSponge;
+    use ark_poly::univariate::DensePolynomial;
+    use ark_poly_commit::kzg10::KZG10;
+
+    type Poly = DensePolynomial<Bls12_381>;
+    type Sponge = PoseidonSponge<F>;
+    type PCS = KZG10<Bls12_381, Poly>;
 
     // build circuit to calculate
     // out = (pub_0 + priv_0) * pub_1 + priv_0
@@ -35,7 +42,7 @@ mod tests {
         let public_inputs = vec![F::from(3), F::from(5)];
 
         // setup polynomials
-        let pp = setup(&circ, &public_inputs);
+        let pp = setup::<F>(&circ, &public_inputs);
         let proof;
 
         {
