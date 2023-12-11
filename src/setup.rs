@@ -19,19 +19,25 @@ fn compute_public_input_polynomial<F>(
 where
     F: FftField + PrimeField,
 {
-    circ.input_config.n_pub();
+    let n_cells = circ.n_cells();
     let evals = public_inputs.to_vec();
     let domain_size = circ.n_cells().checked_next_power_of_two().unwrap();
 
+    let mut pad = vec![F::zero(); n_cells - evals.len()];
+    pad.append(&mut evals.iter().rev().copied().collect::<Vec<_>>());
+
     let domain = GeneralEvaluationDomain::<F>::new(domain_size).unwrap();
-    let evaluations = Evaluations::from_vec_and_domain(evals, domain);
+    let evaluations = Evaluations::from_vec_and_domain(pad, domain);
     let poly = evaluations.interpolate();
+
     Ok(poly)
 }
 
 // compute selector polynomial independent of inputs
 // this can be done in setup phase
 fn compute_selector_polynomial() {
+    // compute selector polynomial from circuit
+    //
     todo!()
 }
 
@@ -93,14 +99,15 @@ mod tests {
         let domain = GeneralEvaluationDomain::<Fq>::new(domain_size).unwrap();
 
         let poly = compute_public_input_polynomial(&circ, &public_input).unwrap();
+        let pad = vec![Fq::from(0); n_cells - n_pub];
 
-        for (p, e) in public_input
+        for (v, d) in pad
             .iter()
-            .rev()
-            .zip(domain.elements().skip(n_cells - n_pub))
+            .chain(public_input.iter().rev())
+            .zip(domain.elements())
         {
-            let val = poly.evaluate(&e);
-            assert_eq!(*p, val);
+            let val = poly.evaluate(&d);
+            assert_eq!(*v, val);
         }
     }
 }
