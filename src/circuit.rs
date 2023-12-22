@@ -53,7 +53,7 @@ impl InputConfig {
 #[derive(Clone)]
 pub struct Circuit {
     pub(crate) input_config: InputConfig,
-    selectors: Vec<Op>,
+    pub(crate) selectors: Vec<Op>,
     copy_constraints: Vec<Vec<Id>>,
 
     /// Total number of cells including.
