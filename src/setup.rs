@@ -45,8 +45,8 @@ where
         .selectors
         .iter()
         .map(|op| match op {
-            Op::Add => F::ZERO,
-            Op::Mul => F::ONE,
+            Op::Add => F::ONE,
+            Op::Mul => F::ZERO,
         })
         .collect::<Vec<_>>();
     let domain = GeneralEvaluationDomain::<F>::new(domain_size).unwrap();
@@ -134,7 +134,7 @@ mod tests {
         let poly = compute_selector_polynomial(&circ).unwrap();
         let domain = GeneralEvaluationDomain::<Fq>::new(size).unwrap();
 
-        let expected = [0, 1, 0].iter().map(|i| Fq::from(*i)).collect::<Vec<_>>();
+        let expected = [1, 0, 1].iter().map(|i| Fq::from(*i)).collect::<Vec<_>>();
 
         for (v, d) in expected.iter().zip(domain.elements().take(expected.len())) {
             let val = poly.evaluate(&d);

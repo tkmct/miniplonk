@@ -17,8 +17,8 @@ type Id = usize;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Op {
-    Add = 0,
-    Mul = 1,
+    Add = 1,
+    Mul = 0,
 }
 
 #[derive(Clone, Copy, Debug)]
