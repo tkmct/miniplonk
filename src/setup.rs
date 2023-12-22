@@ -40,8 +40,9 @@ where
     F: FftField + PrimeField,
 {
     // compute selector polynomial from circuit
-    let domain_size = circ.n_rows().checked_next_power_of_two().unwrap();
-    let evals = circ
+    let domain_size = circ.n_cells().checked_next_power_of_two().unwrap();
+
+    let selectors = circ
         .selectors
         .iter()
         .map(|op| match op {
@@ -49,8 +50,15 @@ where
             Op::Mul => F::ZERO,
         })
         .collect::<Vec<_>>();
-    let domain = GeneralEvaluationDomain::<F>::new(domain_size).unwrap();
 
+    let mut evals = vec![selectors[0]];
+    selectors.iter().skip(1).for_each(|v| {
+        evals.push(F::ZERO);
+        evals.push(F::ZERO);
+        evals.push(*v);
+    });
+
+    let domain = GeneralEvaluationDomain::<F>::new(domain_size).unwrap();
     let evaluations = Evaluations::from_vec_and_domain(evals, domain);
     let poly = evaluations.interpolate();
     Ok(poly)
@@ -129,16 +137,16 @@ mod tests {
     #[test]
     fn test_compute_selector_polynomial() {
         let circ = simple_circ();
-        let size = circ.n_rows().checked_next_power_of_two().unwrap();
 
         let poly = compute_selector_polynomial(&circ).unwrap();
-        let domain = GeneralEvaluationDomain::<Fq>::new(size).unwrap();
+        let domain_size = circ.n_cells().checked_next_power_of_two().unwrap();
+        let domain = GeneralEvaluationDomain::<Fq>::new(domain_size).unwrap();
 
         let expected = [1, 0, 1].iter().map(|i| Fq::from(*i)).collect::<Vec<_>>();
 
-        for (v, d) in expected.iter().zip(domain.elements().take(expected.len())) {
+        for (d, v) in domain.elements().step_by(3).zip(expected) {
             let val = poly.evaluate(&d);
-            assert_eq!(*v, val);
+            assert_eq!(v, val);
         }
     }
 }
