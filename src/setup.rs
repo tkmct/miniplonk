@@ -8,10 +8,10 @@ use ark_poly_commit::{kzg10::KZG10, PolynomialCommitment as PCS};
 
 use anyhow::Result;
 
-use crate::{types::PublicParameters, Circuit};
+use crate::{circuit::Op, types::PublicParameters, Circuit};
 
-// compute inputs polynomial
-// this can be done in setup phase
+/// compute inputs polynomial
+/// this can be done in setup phase
 fn compute_public_input_polynomial<F>(
     circ: &Circuit,
     public_inputs: &[F],
@@ -33,12 +33,35 @@ where
     Ok(poly)
 }
 
-// compute selector polynomial independent of inputs
-// this can be done in setup phase
-fn compute_selector_polynomial() {
+/// compute selector polynomial independent of inputs
+/// this can be done in setup phase
+fn compute_selector_polynomial<F>(circ: &Circuit) -> Result<DensePolynomial<F>>
+where
+    F: FftField + PrimeField,
+{
     // compute selector polynomial from circuit
-    //
-    todo!()
+    let domain_size = circ.n_cells().checked_next_power_of_two().unwrap();
+
+    let selectors = circ
+        .selectors
+        .iter()
+        .map(|op| match op {
+            Op::Add => F::ONE,
+            Op::Mul => F::ZERO,
+        })
+        .collect::<Vec<_>>();
+
+    let mut evals = vec![selectors[0]];
+    selectors.iter().skip(1).for_each(|v| {
+        evals.push(F::ZERO);
+        evals.push(F::ZERO);
+        evals.push(*v);
+    });
+
+    let domain = GeneralEvaluationDomain::<F>::new(domain_size).unwrap();
+    let evaluations = Evaluations::from_vec_and_domain(evals, domain);
+    let poly = evaluations.interpolate();
+    Ok(poly)
 }
 
 // polynomial which implements rotation like followings
@@ -53,7 +76,7 @@ where
     F: FftField + PrimeField,
 {
     let pi_poly = compute_public_input_polynomial(circ, public_input);
-    let selector_poly = compute_selector_polynomial();
+    let s_poly = compute_selector_polynomial::<F>(circ);
 
     // testing copy constraints by permutation argument
 
@@ -108,6 +131,22 @@ mod tests {
         {
             let val = poly.evaluate(&d);
             assert_eq!(*v, val);
+        }
+    }
+
+    #[test]
+    fn test_compute_selector_polynomial() {
+        let circ = simple_circ();
+
+        let poly = compute_selector_polynomial(&circ).unwrap();
+        let domain_size = circ.n_cells().checked_next_power_of_two().unwrap();
+        let domain = GeneralEvaluationDomain::<Fq>::new(domain_size).unwrap();
+
+        let expected = [1, 0, 1].iter().map(|i| Fq::from(*i)).collect::<Vec<_>>();
+
+        for (d, v) in domain.elements().step_by(3).zip(expected) {
+            let val = poly.evaluate(&d);
+            assert_eq!(v, val);
         }
     }
 }
