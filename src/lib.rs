@@ -18,6 +18,7 @@ mod tests {
     use ark_crypto_primitives::sponge::poseidon::PoseidonSponge;
     use ark_poly::univariate::DensePolynomial;
     use ark_poly_commit::kzg10::KZG10;
+    use ark_std::test_rng;
 
     type Poly = DensePolynomial<Bls12_381>;
     type Sponge = PoseidonSponge<F>;
@@ -40,15 +41,20 @@ mod tests {
         // Setup public parameters
         let circ = simple_circ();
         let public_inputs = vec![F::from(3), F::from(5)];
+        let mut rng = test_rng();
 
         // setup polynomials
-        let pp = setup::<F>(&circ, &public_inputs);
+        let pp = setup(&circ, &public_inputs, &mut rng).unwrap();
         let proof;
 
         {
             let private_inputs = vec![F::from(7)];
-            let mut prover =
-                Prover::<F>::new(circ.clone(), pp, public_inputs.clone(), private_inputs);
+            let mut prover = Prover::<F>::new(
+                circ.clone(),
+                pp.clone(),
+                public_inputs.clone(),
+                private_inputs,
+            );
             let result = prover.calculate_witness();
             assert!(result.is_ok());
             // TODO: is output public?

@@ -1,14 +1,19 @@
-use ark_crypto_primitives::sponge::CryptographicSponge;
+use ark_bls12_381::Bls12_381;
+use ark_ec::pairing::Pairing;
 use ark_ff::{FftField, PrimeField};
 use ark_poly::{
-    univariate::DensePolynomial, DenseUVPolynomial, EvaluationDomain, Evaluations,
-    GeneralEvaluationDomain,
+    univariate::DensePolynomial, EvaluationDomain, Evaluations, GeneralEvaluationDomain,
 };
-use ark_poly_commit::{kzg10::KZG10, PolynomialCommitment as PCS};
+use ark_poly_commit::kzg10::KZG10;
+use ark_std::rand::RngCore;
 
 use anyhow::Result;
 
-use crate::{circuit::Op, types::PublicParameters, Circuit};
+use crate::{
+    circuit::Op,
+    types::{PublicParameters, UniPoly381},
+    Circuit,
+};
 
 /// compute inputs polynomial
 /// this can be done in setup phase
@@ -71,17 +76,24 @@ fn compute_wire_rotation_polynomial() {
 }
 
 /// setup public parameters
-pub fn setup<F>(circ: &Circuit, public_input: &[F]) -> PublicParameters
+pub fn setup<F, R>(circ: &Circuit, public_input: &[F], rng: &mut R) -> Result<PublicParameters>
 where
     F: FftField + PrimeField,
+    R: RngCore,
 {
     let pi_poly = compute_public_input_polynomial(circ, public_input);
     let s_poly = compute_selector_polynomial::<F>(circ);
 
     // testing copy constraints by permutation argument
 
-    let pp = PublicParameters {};
-    pp
+    // Setup poly commit
+
+    // TODO: set params depend on circuit size.
+    let degree = 10;
+    let params = KZG10::<Bls12_381, UniPoly381>::setup(degree, false, rng)?;
+    let pp = PublicParameters { kzg_params: params };
+
+    Ok(pp)
 }
 
 #[cfg(test)]

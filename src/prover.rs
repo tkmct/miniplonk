@@ -1,4 +1,5 @@
 use anyhow::{anyhow, Result};
+use ark_ec::pairing::Pairing;
 use ark_ff::FftField;
 use ark_poly::{
     univariate::DensePolynomial, DenseUVPolynomial, EvaluationDomain, GeneralEvaluationDomain,
@@ -165,9 +166,15 @@ impl<F: FftField> Prover<F> {
         //
         // prove following things using polynomial checks
         // 1. gates
-        // 2. inputs
+        // use zero test, prove S(y)⋅[T(y) + T(𝜔y)] + (1 – S(y))⋅T(y)⋅T(𝜔y) − T(𝜔2y) = 0
+        //
+        // 2. Prove T encodes the correct inputs
+        // prover and verifier both computes the same public input polynomial v(x)
+        // Check equality of T(y) - v(y) = 0 on input domain using zero test
+        //
         // 3. wires
         // 4. output
+
         todo!()
     }
 
@@ -185,9 +192,14 @@ impl<F: FftField> Prover<F> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::circuit::{Circuit, CircuitBuilder, InputConfig};
-    use ark_bls12_381::Fq;
+    use crate::{
+        circuit::{Circuit, CircuitBuilder, InputConfig},
+        types::UniPoly381,
+    };
+    use ark_bls12_381::{Bls12_381, Fq};
     use ark_poly::Polynomial;
+    use ark_poly_commit::kzg10::{UniversalParams, KZG10};
+    use ark_std::test_rng;
 
     // build circuit to calculate
     // out = (pub_0 + priv_0) * pub_1 + priv_0
@@ -199,6 +211,14 @@ mod tests {
         let _ = builder.add_addition(out_1, prv_refs[0]).unwrap();
 
         builder.build().unwrap()
+    }
+
+    fn dummy_params() -> PublicParameters {
+        let degree = 10;
+        let mut rng = test_rng();
+        let params = KZG10::<Bls12_381, UniPoly381>::setup(degree, false, &mut rng).unwrap();
+
+        PublicParameters { kzg_params: params }
     }
 
     #[test]
@@ -226,7 +246,7 @@ mod tests {
         // | 50   |  7   |  57  | 0 |
 
         let circ = simple_circ();
-        let pp = PublicParameters {};
+        let pp = dummy_params();
         let public_inputs = vec![Fq::from(3), Fq::from(5)];
         let private_inputs = vec![Fq::from(7)];
         let mut prover = Prover::<Fq>::new(circ, pp, public_inputs, private_inputs);
@@ -247,7 +267,7 @@ mod tests {
     #[test]
     fn test_trace_polynomial() {
         let circ = simple_circ();
-        let pp = PublicParameters {};
+        let pp = dummy_params();
         let size = circ.n_cells().checked_next_power_of_two().unwrap();
         let public_inputs = vec![Fq::from(3), Fq::from(5)];
         let private_inputs = vec![Fq::from(7)];
