@@ -1,4 +1,5 @@
 mod circuit;
+mod common;
 mod prover;
 mod setup;
 mod types;
@@ -42,9 +43,10 @@ mod tests {
         let circ = simple_circ();
         let public_inputs = vec![F::from(3), F::from(5)];
         let mut rng = test_rng();
+        let degree = 10;
 
         // setup polynomials
-        let pp = setup(&circ, &public_inputs, &mut rng).unwrap();
+        let pp = setup(&circ, &public_inputs, &mut rng, degree).unwrap();
         let proof;
 
         {
@@ -59,7 +61,10 @@ mod tests {
             assert!(result.is_ok());
             // TODO: is output public?
             // commit to the polynomials
-            proof = prover.prove();
+            let result = prover.prove();
+            assert!(result.is_ok(), "Proving should succeed");
+
+            proof = result.unwrap();
         }
 
         {
