@@ -1,87 +1,47 @@
-use ark_crypto_primitives::sponge::CryptographicSponge;
+use ark_bls12_381::Bls12_381;
+use ark_ec::pairing::Pairing;
 use ark_ff::{FftField, PrimeField};
 use ark_poly::{
-    univariate::DensePolynomial, DenseUVPolynomial, EvaluationDomain, Evaluations,
-    GeneralEvaluationDomain,
+    univariate::DensePolynomial, EvaluationDomain, Evaluations, GeneralEvaluationDomain,
 };
-use ark_poly_commit::{kzg10::KZG10, PolynomialCommitment as PCS};
+use ark_poly_commit::kzg10::KZG10;
+use ark_std::rand::RngCore;
 
 use anyhow::Result;
 
-use crate::{circuit::Op, types::PublicParameters, Circuit};
-
-/// compute inputs polynomial
-/// this can be done in setup phase
-fn compute_public_input_polynomial<F>(
-    circ: &Circuit,
-    public_inputs: &[F],
-) -> Result<DensePolynomial<F>>
-where
-    F: FftField + PrimeField,
-{
-    let n_cells = circ.n_cells();
-    let evals = public_inputs.to_vec();
-    let domain_size = circ.n_cells().checked_next_power_of_two().unwrap();
-
-    let mut pad = vec![F::zero(); n_cells - evals.len()];
-    pad.append(&mut evals.iter().rev().copied().collect::<Vec<_>>());
-
-    let domain = GeneralEvaluationDomain::<F>::new(domain_size).unwrap();
-    let evaluations = Evaluations::from_vec_and_domain(pad, domain);
-    let poly = evaluations.interpolate();
-
-    Ok(poly)
-}
-
-/// compute selector polynomial independent of inputs
-/// this can be done in setup phase
-fn compute_selector_polynomial<F>(circ: &Circuit) -> Result<DensePolynomial<F>>
-where
-    F: FftField + PrimeField,
-{
-    // compute selector polynomial from circuit
-    let domain_size = circ.n_cells().checked_next_power_of_two().unwrap();
-
-    let selectors = circ
-        .selectors
-        .iter()
-        .map(|op| match op {
-            Op::Add => F::ONE,
-            Op::Mul => F::ZERO,
-        })
-        .collect::<Vec<_>>();
-
-    let mut evals = vec![selectors[0]];
-    selectors.iter().skip(1).for_each(|v| {
-        evals.push(F::ZERO);
-        evals.push(F::ZERO);
-        evals.push(*v);
-    });
-
-    let domain = GeneralEvaluationDomain::<F>::new(domain_size).unwrap();
-    let evaluations = Evaluations::from_vec_and_domain(evals, domain);
-    let poly = evaluations.interpolate();
-    Ok(poly)
-}
-
-// polynomial which implements rotation like followings
-// W(𝜔-2 , 𝜔1 , 𝜔3) = (𝜔1 , 𝜔3 , 𝜔-2 ) , W(𝜔-1 , 𝜔0) = (𝜔0 , 𝜔-1), ,,,
-fn compute_wire_rotation_polynomial() {
-    todo!()
-}
+use crate::{
+    common::{compute_public_input_polynomial, compute_selector_polynomial},
+    types::{PublicParameters, UniPoly381},
+    Circuit,
+};
 
 /// setup public parameters
-pub fn setup<F>(circ: &Circuit, public_input: &[F]) -> PublicParameters
+///
+/// * `circ` - Circuit to prove.
+/// * `public_input` - Public input to a circuit.
+/// * `rng` - random number generator used to setup KZG
+/// * `degree` - Maximum degree of KZG.
+pub fn setup<F, R>(
+    circ: &Circuit,
+    public_input: &[F],
+    rng: &mut R,
+    degree: usize,
+) -> Result<PublicParameters>
 where
     F: FftField + PrimeField,
+    R: RngCore,
 {
-    let pi_poly = compute_public_input_polynomial(circ, public_input);
+    let v_poly = compute_public_input_polynomial(circ, public_input);
     let s_poly = compute_selector_polynomial::<F>(circ);
 
     // testing copy constraints by permutation argument
 
-    let pp = PublicParameters {};
-    pp
+    // Setup poly commit
+
+    let params = KZG10::<Bls12_381, UniPoly381>::setup(degree, false, rng)?;
+    let pp = PublicParameters { kzg_params: params };
+
+    Ok(pp)
 }
 
 #[cfg(test)]

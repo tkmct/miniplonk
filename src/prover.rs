@@ -3,17 +3,18 @@ use ark_ff::FftField;
 use ark_poly::{
     univariate::DensePolynomial, DenseUVPolynomial, EvaluationDomain, GeneralEvaluationDomain,
 };
-use std::collections::VecDeque;
+use std::{collections::VecDeque, ops::Sub};
 
 use crate::{
     circuit::{Circuit, Op},
+    common::{compute_public_input_polynomial, compute_selector_polynomial},
     types::{Proof, PublicParameters},
 };
 
 pub struct Prover<F: FftField> {
     circuit: Circuit,
-    public_inputs: Vec<F>,
-    private_inputs: Vec<F>,
+    public_input: Vec<F>,
+    private_input: Vec<F>,
     pp: PublicParameters,
 
     /// This field stores complete witness data.
@@ -25,14 +26,14 @@ impl<F: FftField> Prover<F> {
     pub fn new(
         circuit: Circuit,
         pp: PublicParameters,
-        public_inputs: Vec<F>,
-        private_inputs: Vec<F>,
+        public_input: Vec<F>,
+        private_input: Vec<F>,
     ) -> Self {
         Self {
             circuit,
             pp,
-            public_inputs,
-            private_inputs,
+            public_input,
+            private_input,
             computation_trace: None,
         }
     }
@@ -153,7 +154,7 @@ impl<F: FftField> Prover<F> {
     }
 
     /// Prove the statement
-    pub fn prove(&mut self) -> Proof {
+    pub fn prove(&mut self) -> Result<Proof> {
         // suppose we have polynomial commitment scheme available like KZG.
         // generate computation trace
         // setup and cmopute inputs polynomial and selector polynomial => prover parameter
@@ -162,21 +163,52 @@ impl<F: FftField> Prover<F> {
         // generate witness
         // calculate trace polynomial and commits to it.
         // calculate wire rotation polynomial.
-        //
+        if self.computation_trace.is_none() {
+            self.calculate_witness()?;
+        }
+        let t_poly = self.compute_trace_polynomial()?;
+
         // prove following things using polynomial checks
         // 1. gates
-        // 2. inputs
+        // use zero test, prove S(y)⋅[T(y) + T(𝜔y)] + (1 – S(y))⋅T(y)⋅T(𝜔y) − T(𝜔2y) = 0
+        let s_poly = compute_selector_polynomial::<F>(&self.circuit)?;
+
+        // 2. Prove T encodes the correct inputs
+        // prover and verifier both computes the same public input polynomial v(x)
+        // Check equality of T(y) - v(y) = 0 on input domain using zero test
+        let v_poly = compute_public_input_polynomial(&self.circuit, &self.public_input)?;
+        let pi_poly = t_poly.sub(&v_poly);
+
+        // vanishing polynomial
+        let z_poly = todo!();
+        // divide pi_poly with z_poly
+        let q_poly = todo!();
+
+        // verifier has commitments to q and pi
+
+        // Opening proof of q, pi on random r sampled using fiat-shamir
+
+        // get input domain
+        let n_cells = self.circuit.n_cells();
+        let domain_size = self.circuit.n_cells().checked_next_power_of_two().unwrap();
+        let evals = self.public_input.to_vec();
+        let mut pad = vec![F::zero(); n_cells - evals.len()];
+        pad.append(&mut evals.iter().rev().copied().collect::<Vec<_>>());
+
+        let domain = GeneralEvaluationDomain::<F>::new(domain_size).unwrap();
+
         // 3. wires
         // 4. output
+
         todo!()
     }
 
     fn get_input_val(&self, id: usize) -> Option<F> {
-        if id < self.public_inputs.len() {
-            self.public_inputs.get(id).copied()
+        if id < self.public_input.len() {
+            self.public_input.get(id).copied()
         } else {
-            self.private_inputs
-                .get(id - self.public_inputs.len())
+            self.private_input
+                .get(id - self.public_input.len())
                 .copied()
         }
     }
@@ -185,9 +217,14 @@ impl<F: FftField> Prover<F> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::circuit::{Circuit, CircuitBuilder, InputConfig};
-    use ark_bls12_381::Fq;
+    use crate::{
+        circuit::{Circuit, CircuitBuilder, InputConfig},
+        types::UniPoly381,
+    };
+    use ark_bls12_381::{Bls12_381, Fq};
     use ark_poly::Polynomial;
+    use ark_poly_commit::kzg10::KZG10;
+    use ark_std::test_rng;
 
     // build circuit to calculate
     // out = (pub_0 + priv_0) * pub_1 + priv_0
@@ -199,6 +236,14 @@ mod tests {
         let _ = builder.add_addition(out_1, prv_refs[0]).unwrap();
 
         builder.build().unwrap()
+    }
+
+    fn dummy_params() -> PublicParameters {
+        let degree = 10;
+        let mut rng = test_rng();
+        let params = KZG10::<Bls12_381, UniPoly381>::setup(degree, false, &mut rng).unwrap();
+
+        PublicParameters { kzg_params: params }
     }
 
     #[test]
@@ -226,7 +271,7 @@ mod tests {
         // | 50   |  7   |  57  | 0 |
 
         let circ = simple_circ();
-        let pp = PublicParameters {};
+        let pp = dummy_params();
         let public_inputs = vec![Fq::from(3), Fq::from(5)];
         let private_inputs = vec![Fq::from(7)];
         let mut prover = Prover::<Fq>::new(circ, pp, public_inputs, private_inputs);
@@ -247,7 +292,7 @@ mod tests {
     #[test]
     fn test_trace_polynomial() {
         let circ = simple_circ();
-        let pp = PublicParameters {};
+        let pp = dummy_params();
         let size = circ.n_cells().checked_next_power_of_two().unwrap();
         let public_inputs = vec![Fq::from(3), Fq::from(5)];
         let private_inputs = vec![Fq::from(7)];
